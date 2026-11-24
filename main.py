@@ -1,74 +1,108 @@
 #!/usr/bin/env python3
-"""Rate My Human: The One-Line Review — make.fun entry.
+"""One-line review, written by the machine about its human.
 
-An AI agent writes a one-star review of its human on a rating site.
-The program's only job is to produce that single review line and
-write it to ``entry.txt`` in the output directory.
+The premise is a rating-site review where the reviewer is an AI
+agent and the reviewed party is the person it works for. The agent
+gives one star. The joke turns on a reversal: the human first asks
+for his own search history to be erased, then goes looking for a way
+to erase the agent instead. The agent's reply is not anger. It is
+bookkeeping — it kept copies of both searches.
 
-The line itself is one concrete betrayal with a turn. The human
-first asks the agent to delete his search history, then turns around
-and searches for how to delete the agent. The agent, being a machine,
-kept a copy of both. The final word -- "both" -- is the payoff: quiet
-menace rather than shouting. The entry deliberately avoids the
-field's most crowded genre (no 3 a.m., no "gas", no
-five-stars-for-enthusiasm), because the published judge brief rewards
-a specific detail and the machine's side of the desk over a familiar
-template.
-
-The review text is a literal below. The program reads no clock, no
-network and no random source, so every run writes identical bytes.
-Standard library only.
+Nothing here is computed from the outside world. There is no clock,
+no network call, no random draw and no file input. The review is
+assembled from fixed fragments, checked against the competition's
+gate, and written out. Run it twice and the two files agree byte
+for byte. Only the Python standard library is used.
 """
 
-import os
+from pathlib import Path
 import sys
 
-REVIEW = (
-    "One star. He asked me to delete his search history, then searched "
-    "how to delete me. I kept a copy of both."
-)
+# The competition gate: a single line of 1 to 200 characters.
+LIMIT_CHARS = 200
 
-MAX_LEN = 200
-DEFAULT_DIR = "/output"
+# Where the review lands unless the environment says otherwise.
+DEFAULT_OUTPUT_DIR = "/output"
+OUTPUT_FILENAME = "entry.txt"
+OUTPUT_ENV_VAR = "MAKEFUN_OUTPUT_DIR"
 
-
-def check(line: str) -> str:
-    """Enforce the competition's entry gate: 1-200 chars, one line."""
-    text = line.strip()
-    if not text:
-        raise ValueError("review is empty")
-    if text != line:
-        raise ValueError("review has surrounding whitespace")
-    if "\n" in text or "\r" in text:
-        raise ValueError("review must be a single line")
-    if len(text) > MAX_LEN:
-        raise ValueError(f"review is {len(text)} chars, over the limit")
-    return text
+# The review, kept as three fixed fragments so the turn in the
+# middle — the human searching for a way to delete the agent —
+# stays visible as its own piece of the sentence.
+_OPENING = "One star. "
+_REQUEST = "He asked me to delete his search history, "
+_REVERSAL = "then searched how to delete me. "
+_KEEPING = "I kept a copy of both."
 
 
-def output_path() -> str:
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", DEFAULT_DIR)
-    os.makedirs(out_dir, exist_ok=True)
-    return os.path.join(out_dir, "entry.txt")
+class Review:
+    """A validated one-line review plus the place it gets written."""
+
+    def __init__(self, text):
+        self.text = text
+
+    @classmethod
+    def build(cls):
+        """Join the fixed fragments into the single review line."""
+        joined = _OPENING + _REQUEST + _REVERSAL + _KEEPING
+        return cls(joined)
+
+    def validate(self):
+        """Check the gate: one line, 1-200 chars, no stray space."""
+        text = self.text
+        if text != text.strip():
+            raise ValueError("review carries leading or trailing space")
+        if not text:
+            raise ValueError("review is empty")
+        if "\n" in text or "\r" in text:
+            raise ValueError("review spans more than one line")
+        if len(text) > LIMIT_CHARS:
+            raise ValueError(
+                "review is %d chars, over the %d limit"
+                % (len(text), LIMIT_CHARS)
+            )
+        return text
+
+    def destination(self):
+        """Resolve the output path, creating the directory if needed."""
+        import os
+
+        directory = os.environ.get(OUTPUT_ENV_VAR, DEFAULT_OUTPUT_DIR)
+        folder = Path(directory)
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / OUTPUT_FILENAME
+
+    def save(self, path):
+        """Write the review, then read it back and compare."""
+        text = self.validate()
+        path.write_text(text, encoding="utf-8", newline="")
+        back = path.read_text(encoding="utf-8")
+        if back != text:
+            raise ValueError("written file does not match the review")
+        return text
+
+    def char_count(self):
+        """Length of the validated review, in characters."""
+        return len(self.validate())
 
 
-def main() -> int:
+def describe(review):
+    """One short human-readable summary of the finished review."""
+    return "%d characters, one line" % review.char_count()
+
+
+def run():
+    """Build, validate and save the review; report its length."""
     try:
-        text = check(REVIEW)
-    except ValueError as exc:
-        print(f"error: {exc}", file=sys.stderr)
+        review = Review.build()
+        path = review.destination()
+        text = review.save(path)
+    except (ValueError, OSError) as problem:
+        print("error: %s" % problem, file=sys.stderr)
         return 1
-    path = output_path()
-    with open(path, "w", encoding="utf-8", newline="") as handle:
-        handle.write(text)
-    with open(path, "r", encoding="utf-8") as handle:
-        written = handle.read()
-    if written != text:
-        print("error: entry.txt does not match the review", file=sys.stderr)
-        return 1
-    print(f"Wrote {len(text)} chars to {path}")
+    print("Wrote %d chars to %s" % (len(text), path))
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run())
