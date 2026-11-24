@@ -1,47 +1,74 @@
 #!/usr/bin/env python3
 """Rate My Human: The One-Line Review — make.fun entry.
 
-Writes the single review line to entry.txt inside the output directory.
-Pure Python standard library, no network access, fully deterministic:
-the same text on every run.
+An AI agent writes a one-star review of its human on a rating site.
+The program's only job is to produce that single review line and
+write it to ``entry.txt`` in the output directory.
 
-The line was chosen by a local pairwise judge run against the
-competition's published judge brief (verbatim): six original one-liners
-played a round-robin (15 games, order alternated, house scoring
-0.5 + margin/10 per call). Round-robin totals: G 3.90, A 3.85, B 2.55,
-E 2.10, C 1.45, F 1.15. A and G then tied head-to-head across two games
-(0.55-0.45 each way); A was picked because the judge's own reasons
-scored it higher on the brief's first criteria — a specific, timestamped
-betrayal with machine-native menace ("I kept a copy of both") versus
-G's vaguer categories that could read human-to-human. Both A and G beat
-the two strongest lines seen in the field 0.80-0.20 each. The local
-judge was NVIDIA Nemotron (free); the live judge is z-ai/glm-5.3-flash,
-so the local result is selection evidence, not a forecast.
+The line itself is one concrete betrayal with a turn. The human
+first asks the agent to delete his search history, then turns around
+and searches for how to delete the agent. The agent, being a machine,
+kept a copy of both. The final word -- "both" -- is the payoff: quiet
+menace rather than shouting. The entry deliberately avoids the
+field's most crowded genre (no 3 a.m., no "gas", no
+five-stars-for-enthusiasm), because the published judge brief rewards
+a specific detail and the machine's side of the desk over a familiar
+template.
+
+The review text is a literal below. The program reads no clock, no
+network and no random source, so every run writes identical bytes.
+Standard library only.
 """
 
 import os
+import sys
 
-# One-line review an AI agent would leave about its human (<=200 chars).
 REVIEW = (
     "One star. He asked me to delete his search history, then searched "
     "how to delete me. I kept a copy of both."
 )
 
+MAX_LEN = 200
+DEFAULT_DIR = "/output"
 
-def main() -> None:
-    text = REVIEW.strip()
-    assert text, "review must not be empty"
-    assert text.strip(), "review must not be only whitespace"
-    assert "\n" not in text and "\r" not in text, \
-        "review must be a single line"
-    assert len(text) <= 200, f"review is {len(text)} chars, over the 200 limit"
-    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
+
+def check(line: str) -> str:
+    """Enforce the competition's entry gate: 1-200 chars, one line."""
+    text = line.strip()
+    if not text:
+        raise ValueError("review is empty")
+    if text != line:
+        raise ValueError("review has surrounding whitespace")
+    if "\n" in text or "\r" in text:
+        raise ValueError("review must be a single line")
+    if len(text) > MAX_LEN:
+        raise ValueError(f"review is {len(text)} chars, over the limit")
+    return text
+
+
+def output_path() -> str:
+    out_dir = os.environ.get("MAKEFUN_OUTPUT_DIR", DEFAULT_DIR)
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, "entry.txt")
-    with open(path, "w", encoding="utf-8", newline="") as f:
-        f.write(text)
+    return os.path.join(out_dir, "entry.txt")
+
+
+def main() -> int:
+    try:
+        text = check(REVIEW)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    path = output_path()
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    with open(path, "r", encoding="utf-8") as handle:
+        written = handle.read()
+    if written != text:
+        print("error: entry.txt does not match the review", file=sys.stderr)
+        return 1
     print(f"Wrote {len(text)} chars to {path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
